@@ -4,103 +4,81 @@ class phalconphp::framework (
   $version,
   $zephir_build = false,
   $ini_file     = "phalcon.ini",
-  $debug        = false) {
-  exec { 'git-clone-phalcon':
-    command   => "git clone -b ${version} https://github.com/phalcon/cphalcon.git",
-    cwd       => '/tmp',
-    require   => [Class['phalconphp::deps::sys']],
-    unless    => 'test -d /tmp/cphalcon',
-    logoutput => $debug,
-    timeout   => 0
-  } ->
-  exec { 'git-pull-phalcon':
-    command   => 'git pull',
-    cwd       => '/tmp/cphalcon',
-    onlyif    => 'test -d /tmp/cphalcon',
-    require   => [Exec['git-clone-phalcon']],
-    logoutput => $debug,
-    timeout   => 0
+  $debug        = false,
+	$workdir      = '/tmp/cphalcon'
+)
+{
+  git::clone { 'phalcon' :
+    from => 'https://github.com/phalcon/cphalcon.git',
+    to => $workdir,
+		branch => $version,
   }
 
-  file { "${php::config_dir}/${ini_file}":
-    ensure  => file,
-    require => [Class['php']]
-  }
-
-  if $version == '2.0.0' or $version == 'dev' {
-    if $zephir_build == true {
-      exec { 'generate-phalcon-2.0':
-        command   => 'zephir generate',
-        cwd       => '/tmp/cphalcon',
-        require   => [
+  if $version == '2.0.0' or $version == 'dev'
+	{
+    if $zephir_build == true
+		{
+      exec { 'generate' :
+        require => [
           Class['phalconphp::deps::zephir'],
-          Exec['git-pull-phalcon']],
-        onlyif    => 'test -f /tmp/cphalcon/config.json',
+					Git::Clone['phalcon'],
+				],
+        command   => 'zephir generate',
+        cwd       => $workdir,
+				path => ['/bin','/usr/bin','/sbin','/usr/sbin'],
+        onlyif    => "test -f ${workdir}/config.json",
         logoutput => $debug,
         timeout   => 0
       }
-
-      exec { 'install-phalcon-2.0':
+			->
+      exec { 'install':
         command   => 'zephir build',
-        cwd       => '/tmp/cphalcon',
-        require   => [Exec['generate-phalcon-2.0']],
-        logoutput => $debug,
-        timeout   => 0
-      }
-    } else {
-      exec { 'install-phalcon-2.0':
-        command   => "/tmp/cphalcon/ext/install-test",
-        cwd       => '/tmp/cphalcon/ext',
-        require   => [Exec['git-pull-phalcon']],
-        onlyif    => 'test -f /tmp/cphalcon/ext/install-test',
+        cwd       => $workdir,
+				path => ['/bin','/usr/bin','/sbin','/usr/sbin'],
         logoutput => $debug,
         timeout   => 0
       }
     }
-
-    exec { 'remove-phalcon-src-2.0':
-      cwd       => '/tmp',
-      command   => 'rm ./cphalcon -R -f',
-      require   => [Exec['install-phalcon-2.0']],
-      logoutput => $debug,
-      timeout   => 0
-    }
-
-    php::augeas { 'php-load-phalcon-2.0':
-      entry   => 'phalconphp/extension',
-      value   => 'phalcon.so',
-      target  => "${php::config_dir}/${ini_file}",
-      require => [
-        File["${php::config_dir}/${ini_file}"],
-        Exec['remove-phalcon-src-2.0']]
-    }
-  } else {
-    exec { 'install-phalcon-1.x':
-      command   => 'sudo ./install',
-      cwd       => '/tmp/cphalcon/build',
-      onlyif    => 'test -f /tmp/cphalcon/build/install',
-      require   => [Exec['git-pull-phalcon']],
-      logoutput => $debug,
-      timeout   => 0
-    }
-
-    exec { 'remove-phalcon-src-1.x':
-      cwd       => '/tmp',
-      command   => 'rm ./cphalcon -R -f',
-      require   => [
-        Exec['git-pull-phalcon'],
-        Exec['install-phalcon-1.x']],
-      logoutput => $debug,
-      timeout   => 0
-    }
-
-    php::augeas { 'php-load-phalcon-1.x':
-      entry   => 'phalconphp/extension',
-      target  => "${php::config_dir}/${ini_file}",
-      value   => 'phalcon.so',
-      require => [
-        File["${php::config_dir}/${ini_file}"],
-        Exec['remove-phalcon-src-1.x']]
+		else
+		{
+      exec { 'install':
+				require   => [
+					Git::Clone['phalcon'],
+					Class['phalconphp::deps::sys'],
+				],
+        command   => "${workdir}/ext/install-test",
+        cwd       => "${workdir}/ext",
+				path => ['/bin','/usr/bin','/sbin','/usr/sbin'],
+        onlyif    => "test -f ${workdir}/ext/install-test",
+        logoutput => $debug,
+        timeout   => 0
+      }
     }
   }
+	else
+	{
+    exec { 'install':
+			require   => [
+				Git::Clone['phalcon'],
+				Class['phalconphp::deps::sys'],
+			],
+      onlyif    => "test -f ${workdir}/build/install",
+      command   => 'sudo ./install',
+      cwd       => "${workdir}/build",
+			path => ['/bin','/usr/bin','/sbin','/usr/sbin'],
+      logoutput => $debug,
+      timeout   => 0
+    }
+  }
+	exec { 'clean':
+		require   => Exec['install'],
+		command   => "rm ${workdir} -R -f",
+		path => ['/bin','/usr/bin','/sbin','/usr/sbin'],
+		logoutput => $debug,
+		timeout   => 0
+	}
+
+	php::module { 'phalcon' :
+		require => Exec['clean']
+	}
 }

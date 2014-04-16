@@ -59,7 +59,8 @@ class phalconphp (
   $compat_sys_deps  = false,
   $custom_ini       = true,
   $ini_file         = "phalcon.ini",
-  $debug            = false) {
+  $debug            = false)
+{
   # Install the system dependencies
 if $ensure_sys_deps == true {
     class { 'phalconphp::deps::sys': each_compat => $compat_sys_deps }
@@ -80,7 +81,7 @@ class { 'phalconphp::framework':
 
   # Install the phalconphp dev tools
 if $install_devtools == true {
-    class { 'phalconphp::deps::devtools':
+    class { 'phalconphp::deps::devtools' :
       version => $devtools_version,
       debug   => $debug
     }
